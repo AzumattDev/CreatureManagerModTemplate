@@ -1,0 +1,2 @@
+﻿Put your asset bundle in this folder. You can then reference it like we do in line 38 of Plugin.cs "Creature wereBearBlack = new("werebear", "WereBearBlack")"
+The first string parameter is "werebear" which should be your asset bundle file name. The second "WereBearBlack" is the prefab name of the creature.
