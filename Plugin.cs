@@ -22,25 +22,24 @@ namespace CreatureManagerModTemplate
         private static string ConfigFileFullPath = Paths.ConfigPath + Path.DirectorySeparatorChar + ConfigFileName;
         internal static string ConnectionError = "";
         private readonly Harmony _harmony = new(ModGUID);
-        
+
         public static readonly ManualLogSource CreatureManagerModTemplateLogger =
             BepInEx.Logging.Logger.CreateLogSource(ModName);
 
         private static readonly ConfigSync ConfigSync = new(ModGUID)
             { DisplayName = ModName, CurrentVersion = ModVersion, MinimumRequiredVersion = ModVersion };
-        
+
         public void Awake()
         {
-            
             _serverConfigLocked = config("General", "Force Server Config", true, "Force Server Config");
             _ = ConfigSync.AddLockingConfigEntry(_serverConfigLocked);
-            
+
             Creature wereBearBlack = new("werebear", "WereBearBlack")
             {
                 Biome = Heightmap.Biome.Meadows,
                 GroupSize = new Range(1, 2),
                 CheckSpawnInterval = 600,
-                RequiredWeather = new List<Weather> { Weather.Rain },
+                RequiredWeather = Weather.Rain | Weather.Fog,
                 Maximum = 2
             };
             wereBearBlack.Localize()
@@ -49,7 +48,7 @@ namespace CreatureManagerModTemplate
                 .French("Ours-Garou Noir");
             wereBearBlack.Drops["Wood"].Amount = new Range(1, 2);
             wereBearBlack.Drops["Wood"].DropChance = 100f;
-			
+
             Creature wereBearRed = new("werebear", "WereBearRed")
             {
                 Biome = Heightmap.Biome.AshLands,
@@ -66,12 +65,12 @@ namespace CreatureManagerModTemplate
             wereBearRed.Drops["Coal"].DropChance = 100f;
             wereBearRed.Drops["Flametal"].Amount = new Range(1, 1);
             wereBearRed.Drops["Flametal"].DropChance = 10f;
-            
+
             Assembly assembly = Assembly.GetExecutingAssembly();
             _harmony.PatchAll(assembly);
             SetupWatcher();
         }
-        
+
         private void OnDestroy()
         {
             Config.Save();
