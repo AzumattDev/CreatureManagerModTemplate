@@ -241,7 +241,7 @@ namespace CreatureManager
 			registeredCreatures.Add(this);
 
 			CanBeTamed = creature.GetComponent<Tameable>();
-			FoodItems = string.Join(",", creature.GetComponent<MonsterAI>()?.m_consumeItems.Select(i => i.m_itemData.m_dropPrefab.name) ?? Enumerable.Empty<string>());
+			FoodItems = string.Join(",", creature.GetComponent<MonsterAI>()?.m_consumeItems.Where(i => i.m_itemData.m_dropPrefab).Select(i => i.m_itemData.m_dropPrefab.name) ?? Enumerable.Empty<string>());
 		}
 
 		public LocalizeKey Localize() => new(Prefab.GetComponent<Character>().m_name);
