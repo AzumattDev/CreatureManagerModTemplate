@@ -19,6 +19,7 @@ public enum Toggle
     Off
 }
 
+[PublicAPI]
 public enum GlobalKey
 {
     [InternalName("")] None,
@@ -32,6 +33,7 @@ public enum GlobalKey
 }
 
 [Flags]
+[PublicAPI]
 public enum Weather
 {
     [InternalName("")] None = 0,
@@ -64,6 +66,13 @@ public class InternalName : Attribute
 {
     public readonly string internalName;
     public InternalName(string internalName) => this.internalName = internalName;
+}
+
+public enum DropOption
+{
+    Disabled,
+    Default,
+    Custom
 }
 
 public enum SpawnOption
@@ -123,7 +132,7 @@ public class Creature
     /// List of items the creature consumes to get tame.
     /// <para>For multiple item names, separate them with a comma.</para>
     /// </summary>
-    public string FoodItems = "";
+    public string FoodItems;
 
     /// <summary>
     /// Sets the time of day the creature can spawn.
@@ -216,23 +225,104 @@ public class Creature
                 : drops[prefabName] = new Drop();
 
         [HarmonyPriority(Priority.VeryHigh)]
-        internal static void AddDropsToCreature(ZNetScene __instance)
+        internal static void AddDropsToCreature()
         {
             foreach (Creature creature in registeredCreatures)
             {
-                if (creature.Drops.drops is not null)
+                UpdateDrops(creature);
+            }
+        }
+
+        internal static void UpdateDrops(Creature creature)
+        {
+            DropOption option = creatureConfigs[creature].Drops.get();
+            if (option == DropOption.Default && creature.Drops.drops is null)
+            {
+                return;
+            }
+
+            (creature.Prefab.GetComponent<CharacterDrop>() ?? creature.Prefab.AddComponent<CharacterDrop>()).m_drops =
+                (creatureConfigs[creature].Drops.get() switch
                 {
-                    (creature.Prefab.GetComponent<CharacterDrop>() ?? creature.Prefab.AddComponent<CharacterDrop>())
-                        .m_drops = creature.Drops.drops.Select(kv => new CharacterDrop.Drop
+                    DropOption.Custom => new SerializedDrops(creatureConfigs[creature].CustomDrops.get()).Drops,
+                    DropOption.Disabled => new List<KeyValuePair<string, Drop>>(),
+                    _ => creature.Drops.drops!.ToList()
+                }).Select(kv =>
+                {
+                    if (kv.Key == "" || ZNetScene.instance is null)
+                    {
+                        return null;
+                    }
+
+                    if (ZNetScene.instance.GetPrefab(kv.Key) is not { } prefab)
+                    {
+                        Debug.LogWarning($"Found invalid prefab name {kv.Key} for creature {creature.Prefab.name}");
+                        return null;
+                    }
+
+                    return new CharacterDrop.Drop
+                    {
+                        m_prefab = prefab,
+                        m_amountMin = (int)kv.Value.Amount.min,
+                        m_amountMax = (int)kv.Value.Amount.max,
+                        m_chance = kv.Value.DropChance / 100,
+                        m_onePerPlayer = kv.Value.DropOnePerPlayer,
+                        m_levelMultiplier = kv.Value.MultiplyDropByLevel
+                    };
+                }).Where(d => d != null).ToList();
+        }
+
+        internal class SerializedDrops
+        {
+            public readonly List<KeyValuePair<string, Drop>> Drops;
+
+            public SerializedDrops(DropList drops, Creature creature) => Drops = (drops.drops ?? creature.Prefab
+                .GetComponent<CharacterDrop>()?.m_drops.ToDictionary(drop => drop.m_prefab.name, drop => new Drop
+                {
+                    Amount = new Range(drop.m_amountMin, drop.m_amountMax),
+                    DropChance = drop.m_chance,
+                    DropOnePerPlayer = drop.m_onePerPlayer,
+                    MultiplyDropByLevel = drop.m_levelMultiplier,
+                }) ?? new Dictionary<string, Drop>()).ToList();
+
+            public SerializedDrops(List<KeyValuePair<string, Drop>> drops) => Drops = drops;
+
+            public SerializedDrops(string reqs)
+            {
+                Drops = reqs.Split(',').Select(r => r.Split(':')).ToDictionary(l => l[0], parts =>
+                {
+                    Range amount = new(1, 1);
+                    if (parts.Length > 1)
+                    {
+                        string[] range = parts[1].Split('-');
+                        if (!int.TryParse(range[0], out int min))
                         {
-                            m_prefab = __instance.GetPrefab(kv.Key),
-                            m_amountMin = (int)kv.Value.Amount.min,
-                            m_amountMax = (int)kv.Value.Amount.max,
-                            m_chance = kv.Value.DropChance / 100,
-                            m_onePerPlayer = kv.Value.DropOnePerPlayer,
-                            m_levelMultiplier = kv.Value.MultiplyDropByLevel
-                        }).ToList();
-                }
+                            min = 1;
+                        }
+
+                        if (range.Length == 1 || !int.TryParse(range[0], out int max))
+                        {
+                            max = min;
+                        }
+
+                        amount = new Range(min, max);
+                    }
+
+                    return new Drop
+                    {
+                        Amount = amount,
+                        DropChance = parts.Length > 2 && float.TryParse(parts[2], out float chance) ? chance : 100,
+                        DropOnePerPlayer = parts.Length > 3 && parts[3] == "onePerPlayer",
+                        MultiplyDropByLevel = parts.Length > 4 && parts[4] == "multiplyByLevel"
+                    };
+                }).ToList();
+            }
+
+            public override string ToString()
+            {
+                return string.Join(",",
+                    Drops.Select(kv =>
+                        $"{kv.Key}:{kv.Value.Amount.min}-{kv.Value.Amount.max}:{kv.Value.DropChance}:{(kv.Value.DropOnePerPlayer ? "onePerPlayer" : "unrestricted")}:{(kv.Value.MultiplyDropByLevel ? "multiplyByLevel" : "unaffectedByLevel")}"));
             }
         }
     }
@@ -301,6 +391,8 @@ public class Creature
         public readonly CustomConfig<float> SpawnChance = new();
         public readonly CustomConfig<Forest> ForestSpawn = new();
         public readonly CustomConfig<int> Maximum = new();
+        public readonly CustomConfig<DropOption> Drops = new();
+        public readonly CustomConfig<string> CustomDrops = new();
     }
 
     private static Dictionary<Creature, CreatureConfig> creatureConfigs = new();
@@ -339,25 +431,28 @@ public class Creature
         void reloadConfigDisplay() =>
             configManagerType?.GetMethod("BuildSettingList")!.Invoke(configManager, Array.Empty<object>());
 
-        TomlTypeConverter.AddConverter(typeof(Range), new TypeConverter
+        if (!TomlTypeConverter.CanConvert(typeof(Range)))
         {
-            ConvertToObject = (s, _) =>
+            TomlTypeConverter.AddConverter(typeof(Range), new TypeConverter
             {
-                string[] parts = s.Split(new[] { '-' }, 2);
-                float.TryParse(parts[0], out float from);
-                if (parts.Length < 2 || !float.TryParse(parts[1], out float to))
+                ConvertToObject = (s, _) =>
                 {
-                    to = from;
-                }
+                    string[] parts = s.Split(new[] { '-' }, 2);
+                    float.TryParse(parts[0], out float from);
+                    if (parts.Length < 2 || !float.TryParse(parts[1], out float to))
+                    {
+                        to = from;
+                    }
 
-                return new Range(from, to);
-            },
-            ConvertToString = (obj, _) =>
-            {
-                Range range = (Range)obj;
-                return $"{range.min} - {range.max}";
-            }
-        });
+                    return new Range(from, to);
+                },
+                ConvertToString = (obj, _) =>
+                {
+                    Range range = (Range)obj;
+                    return $"{range.min} - {range.max}";
+                }
+            });
+        }
 
         bool SaveOnConfigSet = plugin.Config.SaveOnConfigSet;
         plugin.Config.SaveOnConfigSet = false;
@@ -365,34 +460,42 @@ public class Creature
         foreach (Creature creature in registeredCreatures)
         {
             CreatureConfig cfg = creatureConfigs[creature] = new CreatureConfig();
+            string unlocalized = creature.Prefab.GetComponent<Character>().m_name.Replace("$", "");
             string localizedName = new Regex("['[\"\\]]")
-                .Replace(english.Localize(creature.Prefab.GetComponent<Character>().m_name), "").Trim();
+                .Replace(
+                    LocalizeKey.EnglishLocalizations.TryGetValue(unlocalized, out string english)
+                        ? english
+                        : unlocalized, "").Trim();
 
             int order = 0;
 
-            void configWithDesc<T>(CustomConfig<T> cfg, Func<T> getter, Action configChanged, string name,
+            void configWithDesc<T>(CustomConfig<T> customConfig, Func<T> getter, Action configChanged, string name,
                 ConfigDescription desc)
             {
                 if (creature.ConfigurationEnabled)
                 {
-                    cfg.config = Creature.config(localizedName, name, getter(),
+                    customConfig.config = pluginConfig(localizedName, name, getter(),
                         new ConfigDescription(desc.Description, desc.AcceptableValues,
                             desc.Tags.Concat(new[]
                             {
                                 new ConfigurationManagerAttributes
-                                    { Order = --order, CustomDrawer = typeof(T) == typeof(Range) ? drawRange : null }
+                                {
+                                    Order = --order,
+                                    CustomDrawer = (object)customConfig == cfg.CustomDrops ? drawConfigTable :
+                                        typeof(T) == typeof(Range) ? drawRange : null
+                                }
                             }).ToArray()));
-                    cfg.config.SettingChanged += (_, _) => configChanged();
-                    cfg.get = () => cfg.config.Value;
+                    customConfig.config.SettingChanged += (_, _) => configChanged();
+                    customConfig.get = () => customConfig.config.Value;
                 }
                 else
                 {
-                    cfg.get = getter;
+                    customConfig.get = getter;
                 }
             }
 
-            void config<T>(CustomConfig<T> cfg, Func<T> getter, Action configChanged, string name, string desc) =>
-                configWithDesc(cfg, getter, configChanged, name, new ConfigDescription(desc));
+            void config<T>(CustomConfig<T> customConfig, Func<T> getter, Action configChanged, string name,
+                string desc) => configWithDesc(customConfig, getter, configChanged, name, new ConfigDescription(desc));
 
             void updateAllSpawnConfigs()
             {
@@ -436,10 +539,11 @@ public class Creature
                 new ConfigDescription("The items the creature consumes to get tame.", null, tameConfigVisibility));
 
             ConfigurationManagerAttributes spawnConfigVisibility = new();
+            ConfigurationManagerAttributes dropConfigVisibility = new();
 
-            void spawnConfig<T>(CustomConfig<T> cfg, Func<T> getter, string name, string desc,
-                AcceptableValueBase? acceptableValues = null) => configWithDesc(cfg, getter, updateAllSpawnConfigs,
-                name, new ConfigDescription(desc, acceptableValues, spawnConfigVisibility));
+            void spawnConfig<T>(CustomConfig<T> customConfig, Func<T> getter, string name, string desc,
+                AcceptableValueBase? acceptableValues = null) => configWithDesc(customConfig, getter,
+                updateAllSpawnConfigs, name, new ConfigDescription(desc, acceptableValues, spawnConfigVisibility));
 
             config(cfg.Spawn, () => creature.CanSpawn ? SpawnOption.Default : SpawnOption.Disabled, () =>
             {
@@ -480,6 +584,17 @@ public class Creature
                 "If the creature can spawn in forests or cannot spawn in forests. Or both.");
             spawnConfig(cfg.Maximum, () => creature.Maximum, "Maximum creature count",
                 "The maximum number of this creature near the player, before Valheim stops spawning it in. Setting this lower than the upper limit of the group size does not make sense.");
+
+            config(cfg.Drops, () => DropOption.Default, () =>
+            {
+                dropConfigVisibility.Browsable = cfg.Drops.get() == DropOption.Custom;
+                reloadConfigDisplay();
+                DropList.UpdateDrops(creature);
+            }, "Drops", "Configures the drops for the creature.");
+            dropConfigVisibility.Browsable = cfg.Drops.get() == DropOption.Custom;
+            configWithDesc(cfg.CustomDrops, () => new DropList.SerializedDrops(creature.Drops, creature).ToString(),
+                () => DropList.UpdateDrops(creature), "Drop config",
+                new ConfigDescription("", null, dropConfigVisibility));
         }
 
         if (SaveOnConfigSet)
@@ -505,9 +620,128 @@ public class Creature
         float.TryParse(GUILayout.TextField(config.Value.max.ToString(CultureInfo.InvariantCulture)), out float max);
         GUILayout.EndHorizontal();
 
-        if (!locked && (config.Value.min != min || config.Value.max != max))
+        if (!locked && (Math.Abs(config.Value.min - min) > 0.00001f || Math.Abs(config.Value.max - max) > 0.00001f))
         {
             config.Value = new Range(min, max);
+        }
+    }
+
+    private static void drawConfigTable(ConfigEntryBase cfg)
+    {
+        bool locked = cfg.Description.Tags
+            .Select(a =>
+                a.GetType().Name == "ConfigurationManagerAttributes"
+                    ? (bool?)a.GetType().GetField("ReadOnly")?.GetValue(a)
+                    : null).FirstOrDefault(v => v != null) ?? false;
+
+        List<KeyValuePair<string, Drop>> newDrops = new();
+        bool wasUpdated = false;
+
+        GUILayout.BeginVertical();
+        foreach (KeyValuePair<string, Drop> drop in new DropList.SerializedDrops((string)cfg.BoxedValue).Drops)
+        {
+            GUILayout.BeginHorizontal();
+
+            int minAmount = Mathf.RoundToInt(drop.Value.Amount.min);
+            if (int.TryParse(
+                    GUILayout.TextField(minAmount.ToString(), new GUIStyle(GUI.skin.textField) { fixedWidth = 35 }),
+                    out int newMinAmount) && newMinAmount != minAmount && !locked)
+            {
+                minAmount = newMinAmount;
+                wasUpdated = true;
+            }
+
+            GUILayout.Label(" - ", new GUIStyle(GUI.skin.label) { fixedWidth = 14 });
+
+            int maxAmount = Mathf.RoundToInt(drop.Value.Amount.max);
+            if (int.TryParse(
+                    GUILayout.TextField(maxAmount.ToString(), new GUIStyle(GUI.skin.textField) { fixedWidth = 35 }),
+                    out int newMaxAmount) && newMaxAmount != maxAmount && !locked)
+            {
+                maxAmount = newMaxAmount;
+                wasUpdated = true;
+            }
+
+            GUILayout.Label(" ", new GUIStyle(GUI.skin.label) { fixedWidth = 10 });
+
+            string newItemName = GUILayout.TextField(drop.Key);
+            string itemName = locked ? drop.Key : newItemName;
+            wasUpdated = wasUpdated || itemName != drop.Key;
+
+            bool removed = GUILayout.Button("x", new GUIStyle(GUI.skin.button) { fixedWidth = 21 }) && !locked;
+
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+
+            float chance = drop.Value.DropChance;
+            if (float.TryParse(
+                    GUILayout.TextField(chance.ToString(CultureInfo.InvariantCulture),
+                        new GUIStyle(GUI.skin.textField) { fixedWidth = 45 }), out float newChance) &&
+                Math.Abs(newChance - chance) > 0.00001f && !locked)
+            {
+                chance = newChance;
+                wasUpdated = true;
+            }
+
+            GUILayout.Label("% ");
+
+            string oldTooltip = GUI.tooltip;
+
+            bool multiplyPerLevel = drop.Value.MultiplyDropByLevel;
+            bool newMultiplyPerLevel = GUILayout.Toggle(multiplyPerLevel,
+                new GUIContent(multiplyPerLevel ? "per level" : "fixed",
+                    "Loot is multiplied by the creature's level."));
+            if (newMultiplyPerLevel != multiplyPerLevel && !locked)
+            {
+                multiplyPerLevel = newMultiplyPerLevel;
+                wasUpdated = true;
+            }
+
+            bool perPlayer = drop.Value.DropOnePerPlayer;
+            bool newPerPlayer = GUILayout.Toggle(perPlayer,
+                new GUIContent(perPlayer ? "per player" : "independent", "Drops one per player."));
+            if (newPerPlayer != perPlayer && !locked)
+            {
+                perPlayer = newPerPlayer;
+                wasUpdated = true;
+            }
+
+            if (GUI.tooltip != oldTooltip)
+            {
+                Vector3 mouse = Input.mousePosition;
+                GUI.Label(new Rect(mouse.x, mouse.y, 100, 35), GUI.tooltip);
+            }
+
+            if (removed)
+            {
+                wasUpdated = true;
+            }
+            else
+            {
+                Drop newDrop = new()
+                {
+                    Amount = new Range(minAmount, maxAmount),
+                    DropChance = chance,
+                    MultiplyDropByLevel = multiplyPerLevel,
+                    DropOnePerPlayer = perPlayer
+                };
+                newDrops.Add(new KeyValuePair<string, Drop>(itemName, newDrop));
+            }
+
+            if (GUILayout.Button("+", new GUIStyle(GUI.skin.button) { fixedWidth = 21 }) && !locked)
+            {
+                wasUpdated = true;
+                newDrops.Add(new KeyValuePair<string, Drop>("", new Drop()));
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
+        GUILayout.EndVertical();
+
+        if (wasUpdated)
+        {
+            cfg.BoxedValue = new DropList.SerializedDrops(newDrops).ToString();
         }
     }
 
@@ -613,22 +847,6 @@ public class Creature
         }
     }
 
-    private static Localization? _english;
-
-    private static Localization english
-    {
-        get
-        {
-            if (_english == null)
-            {
-                _english = new Localization();
-                _english.SetupLanguage("English");
-            }
-
-            return _english;
-        }
-    }
-
     private static BaseUnityPlugin? _plugin;
 
     private static BaseUnityPlugin plugin
@@ -682,7 +900,7 @@ public class Creature
         }
     }
 
-    private static ConfigEntry<T> config<T>(string group, string name, T value, ConfigDescription description)
+    private static ConfigEntry<T> pluginConfig<T>(string group, string name, T value, ConfigDescription description)
     {
         ConfigEntry<T> configEntry = plugin.Config.Bind(group, name, value, description);
 
@@ -692,8 +910,8 @@ public class Creature
         return configEntry;
     }
 
-    private static ConfigEntry<T> config<T>(string group, string name, T value, string description) =>
-        config(group, name, value, new ConfigDescription(description));
+    private static ConfigEntry<T> pluginConfig<T>(string group, string name, T value, string description) =>
+        pluginConfig(group, name, value, new ConfigDescription(description));
 }
 
 [PublicAPI]
@@ -701,9 +919,16 @@ public class LocalizeKey
 {
     public readonly string Key;
 
+    internal static readonly Dictionary<string, string> EnglishLocalizations = new();
+
     public LocalizeKey(string key) => Key = key.Replace("$", "");
 
-    public LocalizeKey English(string key) => addForLang("English", key);
+    public LocalizeKey English(string key)
+    {
+        EnglishLocalizations[Key] = key;
+        return addForLang("English", key);
+    }
+
     public LocalizeKey Swedish(string key) => addForLang("Swedish", key);
     public LocalizeKey French(string key) => addForLang("French", key);
     public LocalizeKey Italian(string key) => addForLang("Italian", key);
