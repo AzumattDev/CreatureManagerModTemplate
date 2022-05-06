@@ -5,7 +5,7 @@
   ],
   "name": "CreatureModTemplate",
   "identity": "Creature.Manager.Mod.Template",
-  "shortName": "immt",
+  "shortName": "cmmt",
   "tags": {
     "language": "C#",
     "type": "project"
