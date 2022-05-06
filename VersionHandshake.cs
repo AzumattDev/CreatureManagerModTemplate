@@ -12,7 +12,7 @@ namespace CreatureManagerModTemplate
             // Register version check call
             CreatureModTemplatePlugin.CreatureManagerModTemplateLogger.LogDebug("Registering version RPC handler");
             peer.m_rpc.Register($"{CreatureModTemplatePlugin.ModName}_VersionCheck",
-                new Action<ZRpc, ZPackage>(RpcHandlers.RPC_CreatureManagerMod_Version));
+                new Action<ZRpc, ZPackage>(RpcHandlers.RPC_CreatureModTemplate_Version));
 
             // Make calls to check versions
             CreatureModTemplatePlugin.CreatureManagerModTemplateLogger.LogInfo("Invoking version check");
@@ -69,7 +69,7 @@ namespace CreatureManagerModTemplate
     {
         public static readonly List<ZRpc> ValidatedPeers = new();
 
-        public static void RPC_CreatureManagerMod_Version(ZRpc rpc, ZPackage pkg)
+        public static void RPC_CreatureModTemplate_Version(ZRpc rpc, ZPackage pkg)
         {
             string? version = pkg.ReadString();
             CreatureModTemplatePlugin.CreatureManagerModTemplateLogger.LogInfo("Version check, local: " +

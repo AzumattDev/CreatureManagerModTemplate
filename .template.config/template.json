@@ -1,0 +1,33 @@
+﻿{
+  "author": "Azumatt",
+  "classifications": [
+    "Creature Manager Mod"
+  ],
+  "name": "CreatureModTemplate",
+  "identity": "Creature.Manager.Mod.Template",
+  "shortName": "immt",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "CreatureModTemplate",
+  "preferNameDirectory": "true",
+  "symbols": {
+    "AuthorName": {
+      "type": "parameter",
+      "description": "The name of the person that you want to call the author of the mod.",
+      "datatype": "string",
+      "defaultValue": "azumatt",
+      "replaces": "{azumatt}"
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "exclude": [ ".git/**", ".idea/**", ".vs/**", "obj/**", "bin/**", "CreatureModTemplate.sln", "CreatureModTemplate.sln.DotSettings.user" ]
+        }
+      ]
+    }
+  ]
+}
