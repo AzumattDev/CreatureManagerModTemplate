@@ -5,11 +5,11 @@ using CreatureManagerModTemplate;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle(CreatureModTemplatePlugin.ModName)]
+[assembly: AssemblyTitle(CreatureManagerModTemplatePlugin.ModName)]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany(CreatureModTemplatePlugin.Author)]
-[assembly: AssemblyProduct(CreatureModTemplatePlugin.ModName)]
+[assembly: AssemblyCompany(CreatureManagerModTemplatePlugin.Author)]
+[assembly: AssemblyProduct(CreatureManagerModTemplatePlugin.ModName)]
 [assembly: AssemblyCopyright("Copyright ©  2021")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -32,5 +32,5 @@ using CreatureManagerModTemplate;
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion(CreatureModTemplatePlugin.ModVersion)]
-[assembly: AssemblyFileVersion(CreatureModTemplatePlugin.ModVersion)]
+[assembly: AssemblyVersion(CreatureManagerModTemplatePlugin.ModVersion)]
+[assembly: AssemblyFileVersion(CreatureManagerModTemplatePlugin.ModVersion)]

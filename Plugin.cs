@@ -12,7 +12,7 @@ using UnityEngine;
 namespace CreatureManagerModTemplate
 {
     [BepInPlugin(ModGUID, ModName, ModVersion)]
-    public class CreatureModTemplatePlugin : BaseUnityPlugin
+    public class CreatureManagerModTemplatePlugin : BaseUnityPlugin
     {
         internal const string ModName = "CreatureManagerModTemplate";
         internal const string ModVersion = "1.0.0";
