@@ -34,10 +34,26 @@ namespace CreatureManagerModTemplate
 
             Creature wereBearBlack = new("werebear", "WereBearBlack")
             {
+                ConfigurationEnabled = false,
+                Drops = null,
+                CanSpawn = false,
+                CanBeTamed = false,
+                FoodItems = null,
+                SpecificSpawnTime = SpawnTime.Day,
+                RequiredAltitude = default,
+                RequiredOceanDepth = default,
+                RequiredGlobalKey = GlobalKey.None,
                 Biome = Heightmap.Biome.Meadows,
-                GroupSize = new Range(1, 2),
+                SpecificSpawnArea = CreatureManager.SpawnArea.Center,
+                GroupSize = new Range(1,
+                    2),
                 CheckSpawnInterval = 600,
+                SpawnChance = 0,
+                ForestSpawn = Forest.Yes,
                 RequiredWeather = Weather.Rain | Weather.Fog,
+                SpawnAltitude = 0,
+                CanHaveStars = false,
+                AttackImmediately = false,
                 Maximum = 2
             };
             wereBearBlack.Localize()
