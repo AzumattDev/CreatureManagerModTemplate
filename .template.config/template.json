@@ -3,14 +3,14 @@
   "classifications": [
     "Creature Manager Mod"
   ],
-  "name": "CreatureModTemplate",
+  "name": "CreatureManagerModTemplate",
   "identity": "Creature.Manager.Mod.Template",
   "shortName": "cmmt",
   "tags": {
     "language": "C#",
     "type": "project"
   },
-  "sourceName": "CreatureModTemplate",
+  "sourceName": "CreatureManagerModTemplate",
   "preferNameDirectory": "true",
   "symbols": {
     "AuthorName": {
@@ -25,7 +25,7 @@
     {
       "modifiers": [
         {
-          "exclude": [ ".git/**", ".idea/**", ".vs/**", "obj/**", "bin/**", "CreatureModTemplate.sln", "CreatureModTemplate.sln.DotSettings.user" ]
+          "exclude": [ ".git/**", ".idea/**", ".vs/**", "obj/**", "bin/**", "CreatureManagerModTemplate.sln", "CreatureManagerModTemplate.sln.DotSettings.user" ]
         }
       ]
     }
