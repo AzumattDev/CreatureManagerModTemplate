@@ -42,7 +42,6 @@ namespace CreatureManagerModTemplate
             Creature wereBearBlack = new("werebear", "WereBearBlack")
             {
                 ConfigurationEnabled = false,
-                Drops = null,
                 CanSpawn = false,
                 CanBeTamed = false,
                 FoodItems = null,

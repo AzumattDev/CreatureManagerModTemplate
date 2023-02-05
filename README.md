@@ -1,4 +1,6 @@
-﻿# Creature Manager
+﻿## Follow this video to learn how to use this template effectively: https://www.youtube.com/watch?v=ws7Lq8tRWlI&t
+
+# Creature Manager
 
 Makes your custom creature come to life in Valheim.
 
