@@ -175,7 +175,7 @@
     </Target>
     <Target Name="MakeThunderstorePackage" AfterTargets="UpdateManifestVersion" Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
         <ItemGroup>
-            <PackageFiles Include="$(TargetDir)$(AssemblyName).dll; Thunderstore\README.md; Thu`nderstore\manifest.json; Thunderstore\icon.png;" />
+            <PackageFiles Include="$(TargetDir)$(AssemblyName).dll; Thunderstore\README.md; Thunderstore\CHANGELOG.md; Thunderstore\manifest.json; Thunderstore\icon.png;" />
         </ItemGroup>
         <MakeDir Directories="$(PackageDir)" />
         <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(PackageDir)" />
