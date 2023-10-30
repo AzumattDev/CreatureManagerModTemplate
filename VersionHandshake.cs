@@ -22,7 +22,6 @@ namespace CreatureManagerModTemplate
             CreatureManagerModTemplatePlugin.CreatureManagerModTemplateLogger.LogDebug("Invoking version check");
             ZPackage zpackage = new();
             zpackage.Write(CreatureManagerModTemplatePlugin.ModVersion);
-            zpackage.Write(RpcHandlers.ComputeHashForMod().Replace("-", ""));
             peer.m_rpc.Invoke($"{CreatureManagerModTemplatePlugin.ModName}_VersionCheck", zpackage);
         }
     }
@@ -81,15 +80,12 @@ namespace CreatureManagerModTemplate
         public static void RPC_CreatureManagerModTemplate_Version(ZRpc rpc, ZPackage pkg)
         {
             string? version = pkg.ReadString();
-            string? hash = pkg.ReadString();
-
-            var hashForAssembly = ComputeHashForMod().Replace("-", "");
             CreatureManagerModTemplatePlugin.CreatureManagerModTemplateLogger.LogInfo("Version check, local: " +
                                                                                       CreatureManagerModTemplatePlugin.ModVersion +
                                                                                       ",  remote: " + version);
-            if (hash != hashForAssembly || version != CreatureManagerModTemplatePlugin.ModVersion)
+            if (version != CreatureManagerModTemplatePlugin.ModVersion)
             {
-                CreatureManagerModTemplatePlugin.ConnectionError = $"{CreatureManagerModTemplatePlugin.ModName} Installed: {CreatureManagerModTemplatePlugin.ModVersion} {hashForAssembly}\n Needed: {version} {hash}";
+                CreatureManagerModTemplatePlugin.ConnectionError = $"{CreatureManagerModTemplatePlugin.ModName} Installed: {CreatureManagerModTemplatePlugin.ModVersion}\n Needed: {version}";
                 if (!ZNet.instance.IsServer()) return;
                 // Different versions - force disconnect client from server
                 CreatureManagerModTemplatePlugin.CreatureManagerModTemplateLogger.LogWarning($"Peer ({rpc.m_socket.GetHostName()}) has incompatible version, disconnecting...");
@@ -110,21 +106,6 @@ namespace CreatureManagerModTemplate
                     ValidatedPeers.Add(rpc);
                 }
             }
-        }
-        
-        public static string ComputeHashForMod()
-        {
-            using SHA256 sha256Hash = SHA256.Create();
-            // ComputeHash - returns byte array  
-            byte[] bytes = sha256Hash.ComputeHash(File.ReadAllBytes(Assembly.GetExecutingAssembly().Location));
-            // Convert byte array to a string   
-            StringBuilder builder = new();
-            foreach (byte b in bytes)
-            {
-                builder.Append(b.ToString("X2"));
-            }
-
-            return builder.ToString();
         }
     }
 }
