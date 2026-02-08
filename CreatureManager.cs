@@ -130,6 +130,14 @@ public class Creature
 	public bool CanBeTamed = false;
 	[Description("List of items the creature consumes to get tame.\nFor multiple item names, separate them with a comma.")]
 	public string FoodItems;
+	[Description("How long the creature remains fed after eating.")]
+	public float FedDuration;
+	[Description("Time it takes to tame the creature.")]
+	public float TamingTime;
+	[Description("If the creature spawns tamed.")]
+	public bool SpawnsTamed;
+	[Description("The creature faction the creature belongs to.")]
+	public Character.Faction CreatureFaction;
 	[Description("Sets the time of day the creature can spawn.")]
 	public SpawnTime SpecificSpawnTime = SpawnTime.Always;
 	[Description("Sets the minimum and maximum altitude for the creature to spawn.")]
@@ -286,8 +294,12 @@ public class Creature
 		Prefab = creature;
 		registeredCreatures.Add(this);
 
-		CanBeTamed = creature.GetComponent<Tameable>();
-		FoodItems = string.Join(",", creature.GetComponent<MonsterAI>()?.m_consumeItems.Where(i => i.m_itemData.m_dropPrefab).Select(i => i.m_itemData.m_dropPrefab.name) ?? Enumerable.Empty<string>());
+		CanBeTamed = creature.TryGetComponent(out Tameable tameable);
+		FoodItems = string.Join(",", creature.TryGetComponent(out MonsterAI monsterAI) ? monsterAI.m_consumeItems.Where(i => i.m_itemData.m_dropPrefab).Select(i => i.m_itemData.m_dropPrefab.name) : Enumerable.Empty<string>());
+		FedDuration = tameable ? tameable.m_fedDuration : 0f;
+		TamingTime = tameable ? tameable.m_tamingTime : 0f;
+		SpawnsTamed = tameable && tameable.m_startsTamed;
+		CreatureFaction = creature.TryGetComponent(out Character character) ? character.m_faction : Character.Faction.AnimalsVeg;
 	}
 
 	public LocalizeKey Localize() => new(Prefab.GetComponent<Character>().m_name);
@@ -303,6 +315,10 @@ public class Creature
 		public readonly CustomConfig<SpawnOption> Spawn = new();
 		public readonly CustomConfig<Toggle> CanBeTamed = new();
 		public readonly CustomConfig<string> ConsumesItemName = new();
+		public readonly CustomConfig<float> FedDuration = new();
+		public readonly CustomConfig<float> TamingTime = new();
+		public readonly CustomConfig<Toggle> SpawnsTamed = new();
+		public readonly CustomConfig<Character.Faction> CreatureFaction = new();
 		public readonly CustomConfig<SpawnTime> SpecificSpawnTime = new();
 		public readonly CustomConfig<Range> RequiredAltitude = new();
 		public readonly CustomConfig<Range> RequiredOceanDepth = new();
@@ -431,7 +447,10 @@ public class Creature
 					{
 						creature.updateAi(ai);
 					}
-					creature.updateAi(creature.Prefab.GetComponent<BaseAI>());
+					if (creature.Prefab.TryGetComponent(out BaseAI prefabAI))
+					{
+						creature.updateAi(prefabAI);
+					}
 				}
 			}
 
@@ -444,6 +463,26 @@ public class Creature
 			}, "Can be tamed", "Decides, if the creature can be tamed.");
 			tameConfigVisibility.Browsable = cfg.CanBeTamed.get() == Toggle.On;
 			configWithDesc(cfg.ConsumesItemName, () => creature.FoodItems, updateAI, "Food items", new ConfigDescription("The items the creature consumes to get tame.", null, tameConfigVisibility));
+			configWithDesc(cfg.FedDuration, () => creature.FedDuration, updateAI, "Fed duration", new ConfigDescription("How long the creature remains fed after eating.", null, tameConfigVisibility));
+			configWithDesc(cfg.TamingTime, () => creature.TamingTime, updateAI, "Taming time", new ConfigDescription("Time it takes to tame the creature.", null, tameConfigVisibility));
+			configWithDesc(cfg.SpawnsTamed, () => creature.SpawnsTamed ? Toggle.On : Toggle.Off, updateAI, "Spawns tamed", new ConfigDescription("If the creature spawns tamed.", null, tameConfigVisibility));
+			configWithDesc(cfg.CreatureFaction, () => creature.CreatureFaction, () =>
+			{
+				if (ZNetScene.instance)
+				{
+					if (creature.Prefab.TryGetComponent(out Character prefabCharacter))
+					{
+						creature.updateCharacterAttributes(prefabCharacter);
+					}
+					foreach (Character c in Object.FindObjectsOfType<Character>())
+					{
+						if (c.m_nview?.GetPrefabName() == creature.Prefab.name)
+						{
+							creature.updateCharacterAttributes(c);
+						}
+					}
+				}
+			}, "Creature faction", new ConfigDescription("The faction the creature belongs to.", null, tameConfigVisibility));
 
 			ConfigurationManagerAttributes spawnConfigVisibility = new();
 			ConfigurationManagerAttributes dropConfigVisibility = new();
@@ -627,7 +666,13 @@ public class Creature
 				ai.m_tamable = null;
 			}
 		}
-
+		Tameable tamable = ai.m_tamable;
+		if (tamable != null)
+		{
+			tamable.m_fedDuration = cfg.FedDuration.get();
+			tamable.m_tamingTime = cfg.TamingTime.get();
+			tamable.m_startsTamed = cfg.SpawnsTamed.get() == Toggle.On;
+		}
 		if (ai is MonsterAI monsterAI)
 		{
 			monsterAI.m_consumeItems.Clear();
@@ -642,12 +687,25 @@ public class Creature
 			}
 		}
 	}
-
-	internal static void UpdateCreatureAis(ObjectDB __instance)
+	
+	private void updateCharacterAttributes(Character character)
 	{
-		foreach (Creature creature in registeredCreatures)
+		CreatureConfig creatureConfig = creatureConfigs[this];
+		character.m_faction = creatureConfig.CreatureFaction.get();
+	}
+
+	internal static void UpdateCreatures(ObjectDB __instance)
+	{
+		foreach (Creature registeredCreature in registeredCreatures)
 		{
-			creature.updateAi(creature.Prefab.GetComponent<BaseAI>());
+			if (registeredCreature.Prefab.TryGetComponent(out BaseAI ai))
+			{
+				registeredCreature.updateAi(ai);
+			}
+			if (registeredCreature.Prefab.TryGetComponent(out Character character))
+			{
+				registeredCreature.updateCharacterAttributes(character);
+			}
 		}
 	}
 
@@ -710,19 +768,7 @@ public class Creature
 
 	private static Localization? _english;
 
-	private static Localization english
-	{
-		get
-		{
-			if (_english == null)
-			{
-				_english = new Localization();
-				_english.SetupLanguage("English");
-			}
-
-			return _english;
-		}
-	}
+	private static Localization english => _english ??= LocalizationCache.ForLanguage("English");
 
 	private static BaseUnityPlugin? _plugin;
 
@@ -806,7 +852,10 @@ public class LocalizeKey
 			alias = $"${alias}";
 		}
 		Localizations["alias"] = alias;
-		Localization.instance.AddWord(Key, Localization.instance.Localize(alias));
+		if (Localization.m_instance != null)
+		{
+			Localization.instance.AddWord(Key, Localization.instance.Localize(alias));
+		}
 	}
 
 	public LocalizeKey English(string key) => addForLang("English", key);
@@ -847,14 +896,18 @@ public class LocalizeKey
 	private LocalizeKey addForLang(string lang, string value)
 	{
 		Localizations[lang] = value;
-		if (Localization.instance.GetSelectedLanguage() == lang)
+		if (Localization.m_instance != null)
 		{
-			Localization.instance.AddWord(Key, value);
+			if (Localization.instance.GetSelectedLanguage() == lang)
+			{
+				Localization.instance.AddWord(Key, value);
+			}
+			else if (lang == "English" && !Localization.instance.m_translations.ContainsKey(Key))
+			{
+				Localization.instance.AddWord(Key, value);
+			}
 		}
-		else if (lang == "English" && !Localization.instance.m_translations.ContainsKey(Key))
-		{
-			Localization.instance.AddWord(Key, value);
-		}
+
 		return this;
 	}
 
@@ -875,6 +928,41 @@ public class LocalizeKey
 	}
 }
 
+public static class LocalizationCache
+{
+	private static readonly Dictionary<string, Localization> localizations = new();
+
+	internal static void LocalizationPostfix(Localization __instance, string language)
+	{
+		if (localizations.FirstOrDefault(l => l.Value == __instance).Key is { } oldValue)
+		{
+			localizations.Remove(oldValue);
+		}
+
+		if (!localizations.ContainsKey(language))
+		{
+			localizations.Add(language, __instance);
+		}
+	}
+
+	public static Localization ForLanguage(string? language = null)
+	{
+		if (localizations.TryGetValue(language ?? PlayerPrefs.GetString("language", "English"),
+			    out Localization localization))
+		{
+			return localization;
+		}
+
+		localization = new Localization();
+		if (language is not null)
+		{
+			localization.SetupLanguage(language);
+		}
+
+		return localization;
+	}
+}
+
 public static class PrefabManager
 {
 	static PrefabManager()
@@ -883,9 +971,10 @@ public static class PrefabManager
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(ZNetScene), nameof(ZNetScene.Awake)), new HarmonyMethod(AccessTools.DeclaredMethod(typeof(PrefabManager), nameof(Patch_ZNetSceneAwake))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(ZNetScene), nameof(ZNetScene.Awake)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Creature.DropList), nameof(Creature.DropList.AddDropsToCreature))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(SpawnSystem), nameof(SpawnSystem.Awake)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Creature), nameof(Creature.AddToSpawnSystem))));
-		harmony.Patch(AccessTools.DeclaredMethod(typeof(ObjectDB), nameof(ObjectDB.Awake)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Creature), nameof(Creature.UpdateCreatureAis))));
+		harmony.Patch(AccessTools.DeclaredMethod(typeof(ObjectDB), nameof(ObjectDB.Awake)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Creature), nameof(Creature.UpdateCreatures))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(FejdStartup), nameof(FejdStartup.Awake)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Creature), nameof(Creature.Patch_FejdStartup))));
 		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.LoadCSV)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizeKey), nameof(LocalizeKey.AddLocalizedKeys))));
+		harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.SetupLanguage)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(LocalizationCache), nameof(LocalizationCache.LocalizationPostfix))));
 		if (!typeof(Heightmap.Biome).GetCustomAttributes(typeof(FlagsAttribute), false).Any())
 		{
 			// ReSharper disable once PossibleMistakenCallToGetType.2
@@ -940,4 +1029,9 @@ public static class PrefabManager
 			__instance.m_prefabs.Add(prefab);
 		}
 	}
+}
+
+public static class CreatureManagerVersion
+{
+	public const string Version = "1.13.0";
 }
